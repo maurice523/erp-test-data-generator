@@ -1,0 +1,36 @@
+# Fly.io deployment for the Order Generator API.
+#
+# Deploy from this directory:  fly deploy
+# Secrets are NOT stored here. Set them once with:
+#   fly secrets set DATABASE_URL="..." OPENAI_API_KEY="..."
+
+app = "order-generator-api"
+# The Aiven database runs in DigitalOcean San Francisco, so staying in sjc
+# keeps every query on a short round trip.
+primary_region = "sjc"
+
+[build]
+  dockerfile = "src/order_generator/Dockerfile"
+
+[env]
+  PORT = "8080"
+  # TrustedHostMiddleware rejects unknown hosts with 400, so the Fly hostname
+  # has to be listed here.
+  ALLOWED_HOSTS = "orders-api.mauriceneme.com,*.fly.dev,localhost,127.0.0.1"
+  # The frontend reaches the API through a same-origin proxy, so no browser
+  # origin needs allowing; this stays narrow for any direct calls.
+  ALLOWED_ORIGINS = "https://orders.mauriceneme.com,https://erp-test-data-generator.pages.dev"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero when idle: a stopped machine bills only its root filesystem,
+  # and Fly starts it again on the next request. Set min_machines_running = 1
+  # if the measured wake time turns out too slow for a demo.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "order-generator"
+version = "0.1.0"
+description = "Backend tools for extracting, analyzing, and generating customer orders."
+requires-python = ">=3.11"
+dependencies = [
+    "baml-py>=0.223.0",
+    "fastapi",
+    "psycopg[binary]",
+    "pandas",
+    "pydantic",
+    "python-dotenv",
+    "rapidfuzz>=3.14.5",
+    "slowapi",
+    "uvicorn[standard]",
+]
+
+[project.scripts]
+order-generator = "order_generator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"order_generator.extract" = ["*.sql"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

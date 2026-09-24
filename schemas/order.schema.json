@@ -1,0 +1,227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/order.schema.json",
+  "title": "Customer Order",
+  "description": "Schema for customer purchase orders used in email-to-ERP integration. Defines the structure for orders parsed from customer emails and submitted to the ERP system.",
+  "type": "object",
+  "required": ["customerNo", "poNumber", "contact", "lines", "shipViaCode", "shipToAddress"],
+  "properties": {
+    "customerNo": {
+      "type": "string",
+      "description": "Customer account number in the ERP system. Used to identify the customer placing the order.",
+      "pattern": "^[A-Za-z0-9]+$",
+      "minLength": 1,
+      "examples": ["A000001", "1015819"]
+    },
+    "poNumber": {
+      "type": "string",
+      "description": "Customer's purchase order number. This is the reference number the customer uses to track the order on their end.",
+      "minLength": 1,
+      "examples": ["PO-2024-001", "ABC123"]
+    },
+    "externalRefNo": {
+      "type": "string",
+      "description": "External reference or tracking number. Optional field for additional customer-provided reference information.",
+      "examples": ["REF-EXT-001"]
+    },
+    "contact": {
+      "type": "object",
+      "description": "Contact information for the order. Identifies who placed the order and how to reach them.",
+      "required": ["id", "emailAddress"],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Contact ID in the ERP system. Numeric identifier for the customer contact.",
+          "minimum": 0,
+          "examples": [1001, 2345]
+        },
+        "emailAddress": {
+          "type": "string",
+          "description": "Email address of the contact who placed the order.",
+          "format": "email",
+          "examples": ["orders@customer.com"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "lines": {
+      "type": "array",
+      "description": "Order line items. Each line represents a product being ordered with its quantity and configuration.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["partNo", "quantity"],
+        "properties": {
+          "partNo": {
+            "type": "string",
+            "description": "Product part number or SKU in the ERP system.",
+            "minLength": 1,
+            "examples": ["WIDGET-001", "PROMO-HAT-BLK"]
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Number of units being ordered for this line item.",
+            "minimum": 1,
+            "examples": [100, 500, 1000]
+          },
+          "configuration": {
+            "type": "object",
+            "description": "Product configuration options including decoration and customization details.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Configuration type indicating the nature of the order line.",
+                "enum": ["SAMPLE", "NO_PRINT"]
+              },
+              "proofRequested": {
+                "type": "boolean",
+                "description": "Whether the customer has requested a proof before production.",
+                "default": false
+              },
+              "allowShipEarly": {
+                "type": ["boolean", "null"],
+                "description": "Whether partial shipments are allowed before the full order is complete.",
+                "default": false
+              },
+              "decorations": {
+                "type": ["integer", "null"],
+                "description": "Total number of decoration locations on this item.",
+                "minimum": 1,
+                "examples": [1, 2, 3, 4]
+              },
+              "locations": {
+                "type": "array",
+                "description": "Decoration location details. Each entry describes a specific decoration placement on the product.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "locationId": {
+                      "type": "integer",
+                      "description": "Numeric ID for the decoration location from the ERP lookup table. Identifies where on the product the decoration is placed (e.g., front, back, sleeve).",
+                      "$comment": "Values come from ERP decoration location lookup table",
+                      "minimum": 0,
+                      "examples": [1, 2, 5, 10]
+                    },
+                    "method": {
+                      "type": "string",
+                      "description": "Decoration method code indicating how the artwork is applied.",
+                      "minLength": 1,
+                      "examples": ["EMB", "FLC", "PRT"]
+                    },
+                    "artNumber": {
+                      "type": "string",
+                      "description": "Artwork reference number in the ERP system. Links to the specific artwork file to be used.",
+                      "examples": ["ART-001", "LOGO-2024-005"]
+                    },
+                    "logoName": {
+                      "type": "string",
+                      "description": "Human-readable name for the logo or artwork being applied.",
+                      "examples": ["Company Logo", "Event Banner 2024"]
+                    },
+                    "numberOfColors": {
+                      "type": "integer",
+                      "description": "Number of colors in the decoration.",
+                      "minimum": 0,
+                      "examples": [1, 2, 4]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "shipViaCode": {
+      "type": "string",
+      "description": "Carrier or shipping method code. Identifies the shipping carrier and service level for the order.",
+      "$comment": "Values are carrier-specific codes configured in the ERP system.",
+      "minLength": 1,
+      "examples": ["UPS-GND", "FDX-2DAY", "LTL-FRT"]
+    },
+    "shipToAddress": {
+      "type": "object",
+      "description": "Shipping destination address where the order should be delivered.",
+      "required": ["address1", "city", "state", "zipCode", "countryCode"],
+      "properties": {
+        "address1": {
+          "type": "string",
+          "description": "Primary street address line.",
+          "minLength": 1,
+          "examples": ["123 Main Street"]
+        },
+        "address2": {
+          "type": "string",
+          "description": "Secondary address line (suite, apartment, building, etc.).",
+          "examples": ["Suite 100", "Building A"]
+        },
+        "address3": {
+          "type": "string",
+          "description": "Additional address line for complex addresses.",
+          "examples": ["Attention: Receiving Dept"]
+        },
+        "address4": {
+          "type": "string",
+          "description": "Attention To:",
+          "examples": ["Finance Department"]
+        },
+        "city": {
+          "type": "string",
+          "description": "City name.",
+          "minLength": 1,
+          "examples": ["New York", "Toronto"]
+        },
+        "state": {
+          "type": "string",
+          "description": "State or province code. Use 2-character abbreviation.",
+          "pattern": "^[A-Z]{2}$",
+          "examples": ["NY", "CA", "ON", "BC"]
+        },
+        "zipCode": {
+          "type": "string",
+          "description": "Postal or ZIP code. Supports US ZIP codes (5 or 9 digit) and Canadian postal codes.",
+          "pattern": "^([0-9]{5}(-[0-9]{4})?|[A-Z][0-9][A-Z] ?[0-9][A-Z][0-9])$",
+          "examples": ["10001", "90210-1234", "M5V 3A8"]
+        },
+        "countryCode": {
+          "type": "string",
+          "description": "ISO country code for the shipping destination.",
+          "enum": ["US", "CA"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "attachments": {
+      "type": "array",
+      "description": "Supporting documents attached to the order, such as artwork files, purchase order copies, or proofs.",
+      "items": {
+        "type": "object",
+        "required": ["url", "type"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL or file path to the attachment.",
+            "format": "uri",
+            "examples": ["https://storage.example.com/artwork/logo.png"]
+          },
+          "type": {
+            "type": "string",
+            "description": "Category of the attachment indicating its purpose.",
+            "enum": ["logo"],
+            "$comment": "Need actual ERP Document classes"
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Original filename of the attachment for reference.",
+            "examples": ["company_logo.png", "PO_12345.pdf"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
