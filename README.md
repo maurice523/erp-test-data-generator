@@ -53,10 +53,6 @@ and `OPENAI_API_KEY`
 project settings for the build (root `frontend`, `npm ci && npm run build`,
 output `dist`).
 
-**Previously on Render.** `render.yaml` and the two suspended Render services
-are kept as a rollback: resume them in the Render dashboard and the blueprint
-still works. Delete both once Fly has proven itself.
-
 ## Local setup (Windows)
 
 The backend and frontend run separately and should be kept open in two
@@ -233,8 +229,8 @@ The deployed API is public and every order request costs an OpenAI call, so
 usage is capped in two layers:
 
 - **Per client**, in `rate_limit.py`: 10 requests per minute, 30 per hour,
-  counted in memory. Burst control only, and best effort — behind Render's
-  proxy the caller is identified by the first address in `X-Forwarded-For`,
+  counted in memory. Burst control only, and best effort — behind the Cloudflare
+  and Fly proxies the caller is identified by the first address in `X-Forwarded-For`,
   which can be forged. A restart resets these, which costs nothing because the
   extra requests still count against the global cap below.
 - **Across all clients**, in `usage_limit.py`: 100 requests per hour and 500

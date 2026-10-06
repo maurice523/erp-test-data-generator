@@ -40,8 +40,8 @@ export function WelcomeDialog({ onClose, onUsePrompt, open }) {
       <div className="space-y-4 px-5 py-4 text-sm leading-6">
         <p>
           Describe the sales orders you need in plain English and this tool
-          generates them for you. It reads order history from a PostgreSQL
-          database, learns the patterns in it, and builds new orders that follow
+          generates them for you. It reads order history from a Cloudflare
+          D1 database, learns the patterns in it, and builds new orders that follow
           the same shape, which is useful for filling a test system with data
           that looks genuine.
         </p>

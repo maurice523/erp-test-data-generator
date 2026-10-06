@@ -46,5 +46,5 @@ COPY --from=build --chown=ordergenerator:ordergenerator /app/.venv /app/.venv
 
 USER ordergenerator
 
-# Hosts such as Render assign the port through PORT; fall back to 4555 locally.
+# Fly sets the port through PORT (see fly.toml); fall back to 4555 locally.
 ENTRYPOINT ["sh", "-c", "uvicorn order_generator.api:app --host 0.0.0.0 --port ${PORT:-4555}"]

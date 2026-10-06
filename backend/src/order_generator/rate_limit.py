@@ -1,10 +1,11 @@
 """Per-client rate limiting for the public API.
 
 Burst control only, counted in memory: a restart just grants one visitor a few
-extra requests. It is also best effort, because behind Render's proxy the
-caller's address comes from ``X-Forwarded-For``, which a client can forge.
+extra requests. It is also best effort, because behind the Cloudflare and Fly
+proxies the caller's address comes from ``X-Forwarded-For``, which a client can
+forge.
 
-The cap that bounds spend lives in ``usage_limit``, counted in Postgres so it
+The cap that bounds spend lives in ``usage_limit``, counted in D1 so it
 survives restarts no matter who is asking.
 """
 

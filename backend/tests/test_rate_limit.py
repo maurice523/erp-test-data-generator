@@ -18,7 +18,7 @@ PER_MINUTE_ALLOWANCE = int(PER_CLIENT_LIMITS.split("/")[0])
 class RateLimitTests(unittest.TestCase):
     def setUp(self) -> None:
         api.limiter.reset()
-        # These tests cover burst control only; the Postgres-backed cap has
+        # These tests cover burst control only; the D1-backed cap has
         # its own tests and must not be reached from here.
         cap_patch = patch("order_generator.api.check_and_record")
         cap_patch.start()
