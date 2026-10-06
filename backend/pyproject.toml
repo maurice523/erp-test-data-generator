@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "baml-py>=0.223.0",
     "fastapi",
-    "psycopg[binary]",
+    "httpx>=0.28.1",
     "pandas",
     "pydantic",
     "python-dotenv",
@@ -27,8 +27,3 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "order_generator.extract" = ["*.sql"]
-
-[dependency-groups]
-dev = [
-    "httpx>=0.28.1",
-]

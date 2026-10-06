@@ -1,46 +1,36 @@
-"""Create the order tables and fill them with fake data.
+"""Create the order tables in Cloudflare D1 and fill them with fake data.
 
-Usage (from backend/, with DATABASE_URL set in .env):
+Usage (from backend/, with CF_ACCOUNT_ID, CF_D1_DATABASE_ID and CF_API_TOKEN
+set in .env):
 
     uv run python db/load.py
+
+Re-runnable: schema.sql drops and recreates the order tables. The spend-cap
+table, api_usage, is managed by the API and is not touched.
 """
 
-import os
+import sys
 from pathlib import Path
 
-import psycopg
-from dotenv import find_dotenv, load_dotenv
-
-
 DB_DIR = Path(__file__).resolve().parent
-SCRIPTS = ("schema.sql", "seed.sql")
-COUNTED_TABLES = (
-    "orders",
-    "order_lines",
-    "order_addresses",
-    "customer_contacts",
-    "contact_methods",
-)
+sys.path.insert(0, str(DB_DIR))
+
+from order_generator import d1  # noqa: E402
+from seed import INSERT_ORDER, seed_statements  # noqa: E402
 
 
 def main() -> None:
-    load_dotenv(find_dotenv())
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise SystemExit("DATABASE_URL is not set. Add it to backend/.env.")
+    d1.query((DB_DIR / "schema.sql").read_text(encoding="utf-8"))
+    print("ran schema.sql")
 
-    with psycopg.connect(database_url) as connection:
-        for script_name in SCRIPTS:
-            script = (DB_DIR / script_name).read_text(encoding="utf-8")
-            with connection.cursor() as cursor:
-                cursor.execute(script)
-            connection.commit()
-            print(f"ran {script_name}")
+    statements = seed_statements()
+    for statement in statements:
+        d1.query(statement)
+    print(f"ran {len(statements)} seed statements")
 
-        with connection.cursor() as cursor:
-            for table in COUNTED_TABLES:
-                cursor.execute(f"SELECT count(*) FROM {table}")
-                print(f"{table:28} {cursor.fetchone()[0]:>6}")
+    for table in INSERT_ORDER:
+        count = d1.query(f"SELECT count(*) FROM {table}").rows[0][0]
+        print(f"{table:28} {count:>6}")
 
 
 if __name__ == "__main__":

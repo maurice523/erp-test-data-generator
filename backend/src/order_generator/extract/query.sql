@@ -2,16 +2,61 @@ WITH
 eligible_orders AS (
     SELECT o.order_no
     FROM orders o
-    WHERE (%(shipViaCode)s::text IS NULL OR o.shipping_method LIKE %(shipViaCode)s::text)
-      AND (%(orderNo)s::text IS NULL OR o.order_no = %(orderNo)s::text)
+    WHERE (:shipViaCode IS NULL OR o.shipping_method LIKE :shipViaCode)
+      AND (:orderNo IS NULL OR o.order_no = :orderNo)
       AND EXISTS (
           SELECT 1
           FROM order_lines ol
           WHERE ol.order_no = o.order_no
-            AND (%(type)s::text IS NULL OR ol.order_type = %(type)s::text)
+            AND (:type IS NULL OR ol.order_type = :type)
       )
     ORDER BY o.order_no DESC
     LIMIT 400
+),
+-- First matching address per order (SQLite has no LATERAL join).
+ranked_addresses AS (
+    SELECT
+        oa.order_no,
+        oa.address_1,
+        oa.address_2,
+        oa.address_3,
+        oa.address_4,
+        oa.city,
+        oa.state,
+        oa.postal_code,
+        oa.country_code,
+        ROW_NUMBER() OVER (
+            PARTITION BY oa.order_no
+            ORDER BY
+                oa.address_1 NULLS LAST,
+                oa.address_2 NULLS LAST,
+                oa.address_3 NULLS LAST,
+                oa.address_4 NULLS LAST,
+                oa.city NULLS LAST,
+                oa.state NULLS LAST,
+                oa.postal_code NULLS LAST,
+                oa.country_code NULLS LAST,
+                oa.rowid
+        ) AS rn
+    FROM order_addresses oa
+    JOIN eligible_orders eo
+      ON eo.order_no = oa.order_no
+    WHERE (:countryCode IS NULL OR oa.country_code = :countryCode)
+),
+-- First contact per customer, with its e-mail address if it has one.
+ranked_contacts AS (
+    SELECT
+        cc.customer_no,
+        cc.contact_id,
+        cm.value AS email_address,
+        ROW_NUMBER() OVER (
+            PARTITION BY cc.customer_no
+            ORDER BY cc.contact_id
+        ) AS rn
+    FROM customer_contacts cc
+    LEFT JOIN contact_methods cm
+      ON cm.contact_id = cc.contact_id
+     AND cm.method = 'email'
 )
 SELECT
     o.order_no AS "orderNo",
@@ -36,44 +81,13 @@ SELECT
 FROM eligible_orders eo
 JOIN orders o
   ON o.order_no = eo.order_no
-CROSS JOIN LATERAL (
-    SELECT
-        oa.address_1,
-        oa.address_2,
-        oa.address_3,
-        oa.address_4,
-        oa.city,
-        oa.state,
-        oa.postal_code,
-        oa.country_code
-    FROM order_addresses oa
-    WHERE oa.order_no = o.order_no
-      AND (%(countryCode)s::text IS NULL OR oa.country_code = %(countryCode)s::text)
-    ORDER BY
-        oa.address_1,
-        oa.address_2,
-        oa.address_3,
-        oa.address_4,
-        oa.city,
-        oa.state,
-        oa.postal_code,
-        oa.country_code,
-        oa.ctid
-    FETCH FIRST 1 ROW ONLY
-) sa
-LEFT JOIN LATERAL (
-    SELECT
-        cc.contact_id,
-        cm.value AS email_address
-    FROM customer_contacts cc
-    LEFT JOIN contact_methods cm
-      ON cm.contact_id = cc.contact_id
-     AND cm.method = 'email'
-    WHERE cc.customer_no = o.customer_no
-    ORDER BY cc.contact_id
-    FETCH FIRST 1 ROW ONLY
-) sc ON true
+JOIN ranked_addresses sa
+  ON sa.order_no = o.order_no
+ AND sa.rn = 1
+LEFT JOIN ranked_contacts sc
+  ON sc.customer_no = o.customer_no
+ AND sc.rn = 1
 JOIN order_lines ol
   ON ol.order_no = o.order_no
-WHERE (%(type)s::text IS NULL OR ol.order_type = %(type)s::text)
+WHERE (:type IS NULL OR ol.order_type = :type)
 ORDER BY o.order_no, ol.item_no;

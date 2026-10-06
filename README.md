@@ -3,7 +3,7 @@
 Order Generator is a full-stack application that turns a natural-language
 order request into generated sample customer orders. The FastAPI backend uses
 an OpenAI model to interpret the request, retrieves matching historical order
-data from PostgreSQL, analyzes the results, and generates orders that follow
+data from Cloudflare D1 (SQLite), analyzes the results, and generates orders that follow
 the existing JSON order schema. The React/Vite frontend provides the user
 interface.
 
@@ -11,7 +11,7 @@ It is deployed and public — see "Where everything lives" below — and also ru
 locally.
 
 ```text
-request -> OpenAI parameter extraction -> PostgreSQL data extraction
+request -> OpenAI parameter extraction -> D1 data extraction
         -> order analysis -> sample order generation -> React UI
 ```
 
@@ -21,7 +21,7 @@ request -> OpenAI parameter extraction -> PostgreSQL data extraction
 |---|---|---|---|
 | Frontend (`frontend/`) | Cloudflare Pages | <https://orders.mauriceneme.com> | free |
 | API (`backend/`) | Fly.io, region `sjc` | <https://orders-api.mauriceneme.com> | ~$1/mo |
-| Database | Aiven for PostgreSQL, Developer tier | host in `DATABASE_URL` | $5/mo |
+| Database | Cloudflare D1 `order-generator`, location `wnam` | REST API, ids in `CF_*` | free |
 | Model | OpenAI `gpt-5-nano` | — | ~$0.00035/request |
 
 The platform addresses still work underneath: `erp-test-data-generator.pages.dev` and
@@ -37,12 +37,18 @@ frontend calls a relative `/api/...` path, and the Pages Function in
 same-origin and no CORS is involved. Pages cannot proxy to an external origin
 through `_redirects`, which is why that Function exists.
 
+The API reaches D1 through Cloudflare's REST API (`backend/src/order_generator/d1.py`),
+since a Worker binding is only available to code running on Cloudflare. D1 is
+SQLite: `query.sql` uses `:name` parameters, rewritten to D1's positional `?N`
+at import time.
+
 **DNS** for `mauriceneme.com` is in the same Cloudflare account. `orders` is a
 proxied CNAME to Pages; `orders-api` is an A/AAAA pair to Fly's IPs, set to
 **DNS only** so Fly can issue and terminate its own certificate.
 
 **Configuration lives in three places:** `backend/fly.toml` for the API's
-region, port and scaling; Fly secrets for `DATABASE_URL` and `OPENAI_API_KEY`
+region, port and scaling; Fly secrets for `CF_ACCOUNT_ID`, `CF_D1_DATABASE_ID`, `CF_API_TOKEN`
+and `OPENAI_API_KEY`
 (`fly secrets list --app order-generator-api`); and the Cloudflare Pages
 project settings for the build (root `frontend`, `npm ci && npm run build`,
 output `dist`).
@@ -61,8 +67,8 @@ PowerShell terminals.
 Before starting, obtain:
 
 - Access to the GitHub repository.
-- An Aiven for PostgreSQL service and its connection URI (see "Create the
-  database" below).
+- A Cloudflare account with a D1 database and an API token with D1 Edit (see
+  "Create the database" below).
 - An OpenAI API key with access to the model configured by the application.
 
 Never commit credentials, connection strings, or the local `.env` file.
@@ -112,7 +118,9 @@ notepad .env
 Complete `backend/.env` with the values provided by the project owner:
 
 ```dotenv
-DATABASE_URL=postgres://<user>:<password>@<host>:<port>/<database>?sslmode=require
+CF_ACCOUNT_ID=<cloudflare-account-id>
+CF_D1_DATABASE_ID=<d1-database-id>
+CF_API_TOKEN=<api-token-with-d1-edit>
 
 OPENAI_API_KEY=<openai-api-key>
 
@@ -124,14 +132,15 @@ Do not put spaces between comma-separated origins or hosts.
 
 ### 5. Create the database
 
-The application reads order data from a PostgreSQL database. To create one on
-Aiven:
+The application reads order data from a Cloudflare D1 database. To create one:
 
-1. In the [Aiven console](https://console.aiven.io), choose **Create service ->
-   PostgreSQL**, pick the free plan and a nearby region, and name the service
-   (for example `order-tester-pg`).
-2. Wait until the service status is **Running**, then copy the **Service URI**
-   from the service overview page into `DATABASE_URL` in `backend/.env`.
+1. Create the database close to the API (`wnam` is western North America):
+   `npx wrangler d1 create order-generator --location=wnam`. Copy the printed
+   `database_id` into `CF_D1_DATABASE_ID`, and your account id
+   (`npx wrangler whoami`) into `CF_ACCOUNT_ID`.
+2. In the Cloudflare dashboard, **My Profile -> API Tokens -> Create Token ->
+   Custom token**, with the single permission **Account / D1 / Edit**. Put it in
+   `CF_API_TOKEN`.
 3. From `backend/`, create the tables and load sample data:
 
 ```powershell
@@ -139,9 +148,9 @@ uv sync --frozen
 uv run python db\load.py
 ```
 
-`db\schema.sql` creates the order tables and `db\seed.sql` fills them with
-generated sample data. Both scripts are safe to re-run; re-running replaces the
-existing contents.
+`db\schema.sql` creates the order tables and `db\seed.py` generates the
+sample data (seeded, so every run produces the same rows). Safe to re-run;
+re-running replaces the existing contents.
 
 ### 6. Install and run the backend
 
@@ -229,7 +238,7 @@ usage is capped in two layers:
   which can be forged. A restart resets these, which costs nothing because the
   extra requests still count against the global cap below.
 - **Across all clients**, in `usage_limit.py`: 100 requests per hour and 500
-  per day, counted in the `api_usage` table in Postgres so the cap survives
+  per day, counted in the `api_usage` table in D1 so the cap survives
   restarts, redeploys and idle shutdowns. This is the layer that bounds spend.
 
 Exceeding either returns HTTP 429 with a readable message and **no model call
@@ -245,8 +254,8 @@ re-running `db\load.py` to reseed demo data does not wipe the counter.
 ## Common setup problems
 
 - If `uv`, `node`, or `npm` is not recognized, close and reopen PowerShell.
-- If the database cannot be reached, check that the Aiven service is powered on
-  in the Aiven console and that `DATABASE_URL` in `backend/.env` is current.
+- If the database cannot be reached, check the three `CF_*` values in
+  `backend/.env`, and that the API token is active and has D1 Edit.
 - If the query fails with a missing table or column, re-run
   `uv run python db\load.py`.
 - If OpenAI requests fail, verify the API key and model access.

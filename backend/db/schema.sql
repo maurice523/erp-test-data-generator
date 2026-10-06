@@ -1,12 +1,12 @@
--- Tables read by extract/query.sql. Safe to re-run: drops and recreates
--- everything (the spend-cap table, api_usage, is managed by the API and
+-- Tables read by extract/query.sql (SQLite / Cloudflare D1). Safe to re-run:
+-- drops and recreates everything (the spend-cap table, api_usage, is managed by the API and
 -- is not touched here).
 
-DROP TABLE IF EXISTS contact_methods CASCADE;
-DROP TABLE IF EXISTS customer_contacts CASCADE;
-DROP TABLE IF EXISTS order_addresses CASCADE;
-DROP TABLE IF EXISTS order_lines CASCADE;
-DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS contact_methods;
+DROP TABLE IF EXISTS customer_contacts;
+DROP TABLE IF EXISTS order_addresses;
+DROP TABLE IF EXISTS order_lines;
+DROP TABLE IF EXISTS orders;
 
 CREATE TABLE orders (
     order_no         varchar(12) PRIMARY KEY,
@@ -51,5 +51,5 @@ CREATE TABLE contact_methods (
     PRIMARY KEY (contact_id, method)
 );
 
-CREATE INDEX ON order_lines (order_no);
-CREATE INDEX ON order_addresses (order_no);
+CREATE INDEX order_lines_order_no_idx ON order_lines (order_no);
+CREATE INDEX order_addresses_order_no_idx ON order_addresses (order_no);

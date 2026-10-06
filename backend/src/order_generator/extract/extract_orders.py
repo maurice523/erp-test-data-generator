@@ -1,13 +1,9 @@
-import os
+import re
 from dataclasses import dataclass
 import pandas as pd
-import psycopg
-from dotenv import load_dotenv, find_dotenv
+from order_generator import d1
 from order_generator.extract.const import SQL_BLOCK
 from order_generator.order_schema import ORDER_SCHEMA
-
-
-load_dotenv(find_dotenv())
 
 
 @dataclass(frozen=True)
@@ -18,35 +14,46 @@ class OrderDataset:
 QUERY_INPUT_BIND_NAMES = ORDER_SCHEMA.query_bind_names
 COLUMN_NAME_ALIASES = ORDER_SCHEMA.column_name_aliases
 
+NAMED_PARAM = re.compile(r":([A-Za-z_]\w*)")
 
-def get_database_url() -> str:
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is not set in the environment or .env file.")
-    return database_url
+
+def to_positional(sql: str, bind_names: tuple[str, ...]) -> str:
+    """D1 accepts only ``?N`` parameters, so ``:name`` in query.sql becomes
+    ``?N``, where N is the name's 1-based position in ``bind_names``."""
+    positions = {name: index for index, name in enumerate(bind_names, start=1)}
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name not in positions:
+            raise KeyError(f"query.sql uses :{name}, which is not a query bind name.")
+        return f"?{positions[name]}"
+
+    return NAMED_PARAM.sub(replace, sql)
+
+
+POSITIONAL_SQL = to_positional(SQL_BLOCK, QUERY_INPUT_BIND_NAMES)
 
 
 def build_bind_params(
     user_input_params: dict[str, object],
-) -> dict[str, object]:
-    return {
-        bind_name: blank_to_none(user_input_params[bind_name])
+) -> list[object]:
+    return [
+        blank_to_none(user_input_params[bind_name])
         for bind_name in QUERY_INPUT_BIND_NAMES
-    }
+    ]
 
 
 def blank_to_none(value: object) -> object:
-    """Omitted request fields arrive as "". Postgres keeps '' distinct from
-    NULL, so blanks become NULL to switch the filter off."""
+    """Omitted request fields arrive as "". SQL keeps '' distinct from NULL,
+    so blanks become NULL to switch the filter off."""
     if isinstance(value, str) and not value.strip():
         return None
     return value
 
 
-def cursor_to_dataframe(query_cursor: psycopg.Cursor) -> pd.DataFrame:
-    columns = [normalize_column_name(column[0]) for column in query_cursor.description]
-    rows = query_cursor.fetchall()
-    return pd.DataFrame.from_records(rows, columns=columns)
+def result_to_dataframe(result: d1.Result) -> pd.DataFrame:
+    columns = [normalize_column_name(column) for column in result.columns]
+    return pd.DataFrame.from_records(result.rows, columns=columns)
 
 
 def normalize_column_name(column_name: str) -> str:
@@ -56,13 +63,8 @@ def normalize_column_name(column_name: str) -> str:
 def fetch_order_data(
     user_input_params: dict[str, object],
 ) -> tuple[OrderDataset, dict[str, object]]:
-    with psycopg.connect(get_database_url()) as connection:
-
-        with connection.cursor() as cursor:
-            bind_params = build_bind_params(user_input_params)
-
-            cursor.execute(SQL_BLOCK, bind_params)
-            merged = cursor_to_dataframe(cursor)
+    bind_params = build_bind_params(user_input_params)
+    merged = result_to_dataframe(d1.query(POSITIONAL_SQL, bind_params))
 
     dataset = OrderDataset(merged=merged)
 

@@ -1,6 +1,6 @@
 # Render Blueprint: FastAPI backend (Docker) + static React frontend.
 # Create both services with Render -> New -> Blueprint, pointed at this repo.
-# DATABASE_URL and OPENAI_API_KEY are marked sync:false, so Render prompts for
+# The CF_* database settings and OPENAI_API_KEY are marked sync:false, so Render prompts for
 # them on first deploy instead of storing them in the repository.
 
 services:
@@ -14,7 +14,11 @@ services:
     region: oregon
     healthCheckPath: /docs
     envVars:
-      - key: DATABASE_URL
+      - key: CF_ACCOUNT_ID
+        sync: false
+      - key: CF_D1_DATABASE_ID
+        sync: false
+      - key: CF_API_TOKEN
         sync: false
       - key: OPENAI_API_KEY
         sync: false

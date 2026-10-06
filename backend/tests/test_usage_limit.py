@@ -1,57 +1,63 @@
 """The global cap is what bounds OpenAI spend, so its refusals matter.
 
-Every test here patches the database out, or is skipped unless DATABASE_URL is
-set. Nothing in this file may make a model call.
+Every test here patches the database out, or is skipped unless the D1
+settings are set. Nothing in this file may make a model call.
 """
 
 import os
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from order_generator import api, usage_limit
+from order_generator import api, d1, usage_limit
 
 
-def fake_connection(fetchone_result, side_effect=None):
-    """A psycopg.connect stand-in whose cursor returns one canned row."""
-    cursor = MagicMock()
-    cursor.fetchone.return_value = fetchone_result
-    if side_effect is not None:
-        cursor.execute.side_effect = side_effect
-
-    connection = MagicMock()
-    connection.__enter__.return_value = connection
-    connection.cursor.return_value.__enter__.return_value = cursor
-    return connection
+def batch_returning(inserted_rows):
+    """A d1.batch stand-in: the prune result, then the insert's RETURNING rows."""
+    return [d1.Result(columns=[], rows=[]), d1.Result(columns=["called_at"], rows=inserted_rows)]
 
 
 class CheckAndRecordTests(unittest.TestCase):
     def test_allows_when_the_insert_returns_a_row(self) -> None:
-        with patch("psycopg.connect", return_value=fake_connection(("now",))):
+        with patch("order_generator.d1.batch", return_value=batch_returning([[1]])):
             usage_limit.check_and_record()  # does not raise
 
     def test_refuses_when_the_insert_records_nothing(self) -> None:
         # No row back means the WHERE clause rejected it: a limit is spent.
-        with patch("psycopg.connect", return_value=fake_connection(None)):
+        with patch("order_generator.d1.batch", return_value=batch_returning([])):
             with self.assertRaises(usage_limit.UsageLimitExceeded):
                 usage_limit.check_and_record()
 
     def test_database_errors_propagate(self) -> None:
-        connection = fake_connection(None, side_effect=RuntimeError("no database"))
-        with patch("psycopg.connect", return_value=connection):
-            with self.assertRaises(RuntimeError):
+        with patch("order_generator.d1.batch", side_effect=d1.D1Error("no database")):
+            with self.assertRaises(d1.D1Error):
                 usage_limit.check_and_record()
 
+    def test_missing_table_is_created_then_retried(self) -> None:
+        with (
+            patch(
+                "order_generator.d1.batch",
+                side_effect=[
+                    d1.D1Error("no such table: api_usage: SQLITE_ERROR"),
+                    batch_returning([[1]]),
+                ],
+            ),
+            patch("order_generator.d1.query") as query,
+        ):
+            usage_limit.check_and_record()  # does not raise
+
+        query.assert_called_once_with(usage_limit.CREATE_TABLE_SQL)
+
     def test_limits_are_passed_to_the_query(self) -> None:
-        connection = fake_connection(("now",))
-        with patch("psycopg.connect", return_value=connection):
+        with patch(
+            "order_generator.d1.batch", return_value=batch_returning([[1]])
+        ) as batch:
             usage_limit.check_and_record()
 
-        cursor = connection.cursor.return_value.__enter__.return_value
-        _sql, params = cursor.execute.call_args[0]
-        self.assertEqual(params["hourly_limit"], usage_limit.HOURLY_LIMIT)
-        self.assertEqual(params["daily_limit"], usage_limit.DAILY_LIMIT)
+        statements = batch.call_args[0][0]
+        _sql, params = statements[-1]
+        self.assertEqual(params, [usage_limit.HOURLY_LIMIT, usage_limit.DAILY_LIMIT])
 
 
 class EndpointTests(unittest.TestCase):
@@ -100,7 +106,7 @@ class EndpointTests(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    os.getenv("DATABASE_URL"), "needs a live database; no model calls involved"
+    os.getenv("CF_API_TOKEN"), "needs a live database; no model calls involved"
 )
 class LiveDatabaseTests(unittest.TestCase):
     def test_recording_increments_the_window_counts(self) -> None:
@@ -116,16 +122,9 @@ class LiveDatabaseTests(unittest.TestCase):
 
     def remove_newest_row(self) -> None:
         """Keep the suite from spending slots out of the real daily cap."""
-        import psycopg
-
-        from order_generator.extract.extract_orders import get_database_url
-
-        with psycopg.connect(get_database_url()) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "DELETE FROM api_usage WHERE called_at = "
-                    "(SELECT max(called_at) FROM api_usage)"
-                )
+        d1.query(
+            "DELETE FROM api_usage WHERE rowid = (SELECT max(rowid) FROM api_usage)"
+        )
 
 
 if __name__ == "__main__":

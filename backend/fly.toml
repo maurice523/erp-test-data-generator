@@ -2,11 +2,11 @@
 #
 # Deploy from this directory:  fly deploy
 # Secrets are NOT stored here. Set them once with:
-#   fly secrets set DATABASE_URL="..." OPENAI_API_KEY="..."
+#   fly secrets set CF_ACCOUNT_ID="..." CF_D1_DATABASE_ID="..." CF_API_TOKEN="..." OPENAI_API_KEY="..."
 
 app = "order-generator-api"
-# The Aiven database runs in DigitalOcean San Francisco, so staying in sjc
-# keeps every query on a short round trip.
+# The D1 database was created with location hint wnam (western North
+# America), so staying in sjc keeps every query on a short round trip.
 primary_region = "sjc"
 
 [build]

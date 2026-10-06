@@ -102,10 +102,10 @@ class SqlResourceTests(unittest.TestCase):
             all(value == "" for value in request.model_dump().values())
         )
 
-    def test_sql_resource_is_loaded_for_postgres_execution(self) -> None:
+    def test_sql_resource_is_loaded_for_d1_execution(self) -> None:
         self.assertTrue(SQL_BLOCK.startswith("WITH"))
         self.assertFalse(SQL_BLOCK.endswith(";"))
-        self.assertIn("%(shipViaCode)s", SQL_BLOCK)
+        self.assertIn(":shipViaCode", SQL_BLOCK)
 
     def test_quantity_is_not_an_extraction_parameter(self) -> None:
         request = GenerateOrdersRequest(
@@ -123,7 +123,7 @@ class SqlResourceTests(unittest.TestCase):
         self.assertNotIn("minQuantity", request_to_query_params(request))
         self.assertNotIn("maxQuantity", request_to_query_params(request))
         self.assertNotIn("quantity", QUERY_INPUT_BIND_NAMES)
-        self.assertNotIn("%(quantity)s", SQL_BLOCK)
+        self.assertNotIn(":quantity", SQL_BLOCK)
 
 
 class SchemaDrivenGenerationTests(unittest.TestCase):
